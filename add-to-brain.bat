@@ -7,7 +7,7 @@ rem --- 1. 設定您的專案路徑 (這是唯一需要修改的地方) ---
 set "PROJECT_DIR=D:\_Personal\_Coding\_Python\JimLocalBrain"
 
 rem --- 2. 啟動 Python 虛擬環境 ---
-call %PROJECT_DIR%\venv\Scripts\activate.bat
+call %PROJECT_DIR%\venv\Scripts\activate
 
 rem --- 3. 切換到專案目錄 ---
 cd /d %PROJECT_DIR%

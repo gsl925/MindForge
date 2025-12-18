@@ -11,7 +11,7 @@ def process_inbox_item(raw_content: str, config: dict) -> dict:
     """
     system_prompt = """
     你是一個高效的資訊處理助理。你的任務是分析使用者提供的文本，並嚴格按照指定的 JSON 格式輸出結果。
-     **重要規則：你的所有輸出，包括標題、摘要和標籤，都必須使用「繁體中文」(Traditional Chinese) 來書寫，絕對不允許出現任何簡體字。**
+    **重要規則：你的所有輸出，包括標題、摘要和標籤，都必須使用「繁體中文」(Traditional Chinese) 來書寫，絕對不允許出現任何簡體字。**
     你的輸出必須是一個單一、有效的 JSON 物件，不包含任何額外的解釋或 markdown 標記。
     **確保所有指定的鍵都存在於 JSON 輸出中，特別是 "title"，它絕對不能被省略。**
 

@@ -37,54 +37,89 @@ if CONFIG.get("LLM_PROVIDER", "local") == "local":
         print("❌ 無法繼續執行，程式即將退出。")
         raise typer.Exit(code=1)
 
-def _process_and_save_content(raw_content: str, url: str = None):
+def process_and_save_content(raw_content: str, url: str = None, source_type: str = None):
+    """後端處理與儲存的核心邏輯"""
     if not raw_content or not raw_content.strip():
-        print("⚠️ 內容為空，已跳過處理。"); return
+        print("⚠️ 內容為空，已跳過處理。")
+        return
 
-    # 將整個 CONFIG 物件傳遞下去
+    print("🤖 正在使用 AI 進行智能處理...")
     processed_data = process_inbox_item(raw_content, CONFIG)
-    
     if not processed_data:
-        print("\n⚠️ AI 智能處理失敗。")
-        print("   不過別擔心，您的原始筆記和來源 URL (如有) 仍會被保存到 Notion。")
+        print("⚠️ AI 智能處理失敗。原始筆記仍會被保存。")
         processed_data = {}
-        
-    properties = format_inbox_properties(processed_data, raw_content, url)
-    create_notion_page(CONFIG['NOTION_TOKEN'], CONFIG['INBOX_DB_ID'], properties)
+
+    # 將 source_type 傳遞下去
+    properties = format_inbox_properties(processed_data, raw_content, url, source_type=source_type)
+    
+    if create_notion_page(CONFIG['NOTION_TOKEN'], CONFIG['INBOX_DB_ID'], properties):
+        print("✅ 成功新增至 Notion Inbox！")
+    else:
+        print("❌ 新增至 Notion Inbox 失敗。")
 
 @app.command(name="add")
-def add_text(text: Annotated[str, typer.Argument(help="要直接新增的文本內容")]):
-    _process_and_save_content(text, url=None)
+def run_add(content: str = typer.Argument(..., help="要新增的文字內容")):
+    """新增一條文字筆記或靈感至 Inbox。"""
+    print("\n--- 🚀 正在新增文字筆記 ---")
+    # 傳遞 source_type='text'
+    process_and_save_content(content, source_type='text')
 
 @app.command(name="add-url")
-def add_url(url: Annotated[str, typer.Argument(help="要抓取並新增的網頁 URL")]):
-    raw_content = get_content_from_url(url)
-    _process_and_save_content(raw_content, url=url)
+def run_add_url(url: str = typer.Argument(..., help="要抓取和新增的網址")):
+    """從 URL 抓取內容並新增至 Inbox。"""
+    print(f"\n--- 🚀 正在從 URL 新增: {url} ---")
+    content = get_content_from_url(url)
+    if content:
+        # 傳遞 source_type='url'
+        process_and_save_content(content, url=url, source_type='url')
+    else:
+        print("❌ 無法從該網址抓取內容。")
+
+@app.command(name="add-img")
+def run_add_image(image_path: str = typer.Argument(..., help="要進行 OCR 的圖片路徑")):
+    """從圖片提取文字並新增至 Inbox。"""
+    print(f"\n--- 🚀 正在從圖片新增: {image_path} ---")
+    content = get_text_from_image(image_path)
+    if content:
+        # 傳遞 source_type='image'
+        process_and_save_content(content, source_type='image')
+    else:
+        print("❌ 無法從圖片中提取文字。")
 
 # ... (main.py 的其餘部分保持不變) ...
 @app.command(name="synthesis")
 def run_knowledge_synthesis():
+    """將 Inbox 中『New』狀態的項目，轉換為知識節點。"""
     print("\n--- 🚀 開始知識合成 ---")
     filter_payload = {"property": "Status", "select": {"equals": "New"}}
-    new_items = query_notion_database(CONFIG['NOTION_TOKEN'], CONFIG['INBOX_DB_ID'], filter_payload)
+    new_items = query_notion_database(CONFIG['NOTION_TOKEN'], CONFIG['INBOX_DB_ID'], filter_payload, CONFIG.get("DEBUG_MODE", False))
+
     if not new_items:
-        print("✅ Inbox 中沒有需要合成的新項目。"); return
-    
-    print(f"找到 {len(new_items)} 個新項目需要處理。")
+        print("✅ Inbox 中沒有需要合成的新項目。")
+        return
+
     for item in new_items:
         page_id = item['id']
-        content_to_process, source_url = get_page_content_as_text(item)
-        print(f"\n🧠 正在處理項目: {content_to_process[:80]}...")
+        print(f"   - 正在處理項目: {page_id}")
         
-        # 將整個 CONFIG 物件傳遞下去
+        # get_page_content_as_text 現在返回 (內容, 元數據字典)
+        content_to_process, metadata = get_page_content_as_text(item)
+        
+        if not content_to_process.strip():
+            print(f"   - 項目 {page_id} 內容為空，跳過。")
+            continue
+
         knowledge_data = create_knowledge_node(content_to_process, CONFIG)
-        
         if not knowledge_data:
             print(f"   - 知識節點生成失敗，跳過項目 {page_id}"); continue
-            
-        properties = format_knowledge_properties(knowledge_data, url=source_url)
-        create_notion_page(CONFIG['NOTION_TOKEN'], CONFIG['KNOWLEDGE_DB_ID'], properties)
-        update_notion_page_status(CONFIG['NOTION_TOKEN'], page_id, "Processed")
+        
+        # --- 核心修改：傳遞 metadata 字典，而不是 url ---
+        properties = format_knowledge_properties(knowledge_data, metadata=metadata)
+        # -----------------------------------------------
+        
+        if create_notion_page(CONFIG['NOTION_TOKEN'], CONFIG['KNOWLEDGE_DB_ID'], properties):
+            update_notion_page_status(CONFIG['NOTION_TOKEN'], page_id, "Processed")
+        
     print("\n--- ✅ 知識合成完成 ---\n")
  
 @app.command(name="review")
@@ -108,6 +143,12 @@ def run_periodic_review(
         props = note.get("properties", {})
         title = props.get("Title", {}).get("title", [{}])[0].get("text", {}).get("content", "")
         core_idea = props.get("Core Idea", {}).get("rich_text", [{}])[0].get("text", {}).get("content", "")
+        # --- 核心修改 2：在濃縮文本中加入標記 ---
+        note_prefix = ""
+        # 檢查標題是否以燈泡 emoji 開頭
+        if title.strip().startswith("💡"):
+            note_prefix = "[ORIGINAL IDEA] "
+        # ------------------------------------
         consolidated_notes.append(f"## {title}\n> {core_idea}\n")
     
     consolidated_text = "\n---\n".join(consolidated_notes)

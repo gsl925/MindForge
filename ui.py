@@ -20,7 +20,7 @@ from scripts.notion_handler import (
 
 # --- UI 後端邏輯封裝 ---
 
-def ui_process_and_save_content(raw_content: str, config: dict, url: str = None):
+def ui_process_and_save_content(raw_content: str, config: dict, url: str = None, source_type: str = None):
     """專為 UI 設計的 Inbox 處理函式"""
     if not raw_content or not raw_content.strip():
         st.warning("⚠️ 內容為空，已跳過處理。")
@@ -29,7 +29,10 @@ def ui_process_and_save_content(raw_content: str, config: dict, url: str = None)
     if not processed_data:
         st.warning("⚠️ AI 智能處理失敗。不過別擔心，您的原始筆記仍會被保存。")
         processed_data = {}
-    properties = format_inbox_properties(processed_data, raw_content, url)
+        
+    # 將 source_type 傳遞下去
+    properties = format_inbox_properties(processed_data, raw_content, url, source_type=source_type)
+    
     result = create_notion_page(config['NOTION_TOKEN'], config['INBOX_DB_ID'], properties)
     return result is not None
 
@@ -55,7 +58,9 @@ def ui_run_knowledge_synthesis(config: dict):
                     st.error("❌ AI 未能生成有效的知識節點。已跳過。")
                     continue
                 with st.spinner("✍️ 正在寫入 Notion..."):
-                    properties = format_knowledge_properties(knowledge_data, metadata)
+                    # --- 核心修改：傳遞 metadata 字典 ---
+                    properties = format_knowledge_properties(knowledge_data, metadata=metadata)
+                    # ------------------------------------
                     result = create_notion_page(config['NOTION_TOKEN'], config['KNOWLEDGE_DB_ID'], properties)
                 if result:
                     st.success(f"✅ 項目 '{knowledge_data.get('title', 'Untitled')}' 已成功合成！")
@@ -90,6 +95,12 @@ def ui_run_review(period: str, config: dict):
         props = note.get("properties", {})
         title = props.get("Title", {}).get("title", [{}])[0].get("text", {}).get("content", "")
         core_idea = props.get("Core Idea", {}).get("rich_text", [{}])[0].get("text", {}).get("content", "")
+        # --- 核心修改 2：在濃縮文本中加入標記 ---
+        note_prefix = ""
+        # 檢查標題是否以燈泡 emoji 開頭
+        if title.strip().startswith("💡"):
+            note_prefix = "[ORIGINAL IDEA] "
+        # ------------------------------------        
         consolidated_notes.append(f"## {title}\n> {core_idea}\n")
     consolidated_text = "\n---\n".join(consolidated_notes)
     with st.expander("顯示用於分析的濃縮文本"):
@@ -149,7 +160,7 @@ with tab1:
     if st.button("新增文字", key="add_text"):
         if text_input:
             with st.spinner(spinner_text):
-                if ui_process_and_save_content(text_input, CONFIG):
+                if ui_process_and_save_content(text_input, CONFIG, source_type='text'):
                     st.success("✅ 成功新增至 Notion Inbox！")
         else:
             st.warning("請輸入內容。")
@@ -161,7 +172,7 @@ with tab2:
                 content = get_content_from_url(url_input)
             if content:
                 with st.spinner(spinner_text):
-                    if ui_process_and_save_content(content, CONFIG, url=url_input):
+                    if ui_process_and_save_content(content, CONFIG, url=url_input, source_type='url'):
                         st.success("✅ 成功從網址新增至 Notion Inbox！")
             else:
                 st.error("❌ 無法從該網址抓取內容。")
@@ -178,7 +189,7 @@ with tab3:
                 content = get_text_from_image(temp_path)
             if content:
                 with st.spinner(spinner_text):
-                    if ui_process_and_save_content(content, CONFIG):
+                    if ui_process_and_save_content(content, CONFIG, source_type='image'):
                         st.success("✅ 成功從圖片新增至 Notion Inbox！")
             else:
                 st.error("❌ 無法從圖片中提取文字。")

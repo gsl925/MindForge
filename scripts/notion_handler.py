@@ -48,31 +48,56 @@ def create_notion_page(token: str, database_id: str, properties: dict):
         print(f"❌ 新增 Notion 頁面時發生錯誤: {e}\n   錯誤詳情: {response.text}")
         return None
 
-def format_inbox_properties(data: dict, raw_content: str, url: str = None) -> dict:
+def format_inbox_properties(processed_data: dict, raw_content: str, url: str = None, source_type: str = None) -> dict:
+    """將處理後的內容格式化為 Notion Inbox DB 的屬性結構。"""
     properties = {
-        "Title": {"title": [{"text": {"content": data.get("title", "Untitled")}}]},
-        "Raw Content": {"rich_text": [{"text": {"content": raw_content[:2000]}}]},
-        "Short Summary": {"rich_text": [{"text": {"content": data.get("short_summary", "")}}]},
-        "Extended Summary": {"rich_text": [{"text": {"content": data.get("extended_summary", "")}}]},
-        "Category": {"select": {"name": data.get("category", "Knowledge")}},
-        "Tags": {"multi_select": [{"name": tag} for tag in data.get("tags", [])]},
+        "Title": {"title": [{"text": {"content": processed_data.get("title", "Untitled Note")}}]},
+        "Short Summary": {"rich_text": [{"text": {"content": processed_data.get("short_summary", "")}}]},
+        "Extended Summary": {"rich_text": [{"text": {"content": raw_content}}]},
         "Status": {"select": {"name": "New"}}
     }
+
     if url:
         properties["URL"] = {"url": url}
+
+    category = processed_data.get("category")
+    if category:
+        properties["Category"] = {"select": {"name": category}}
+
+    tags_list = processed_data.get("tags", [])
+
+    # --- 核心修改：根據來源類型添加固定標籤 ---
+    if source_type == 'text':
+        fixed_tag = "Original Thought"
+        if fixed_tag not in tags_list:
+            # 將其插入到列表的最前面
+            tags_list.insert(0, fixed_tag)
+    # -----------------------------------------
+
+    if tags_list:
+        properties["Tags"] = {"multi_select": [{"name": tag} for tag in tags_list]}
+
     return properties
 
 # --- 核心修改 2：讓 format_knowledge_properties 接收並使用元數據 ---
 def format_knowledge_properties(data: dict, metadata: dict) -> dict:
     """將 Knowledge Agent 的輸出和原始元數據格式化為 Notion API 結構。"""
     
-    # 處理 AI 生成的內容
     notes_string = _format_list_content(data.get("notes", ""))
     insights_string = _format_list_content(data.get("key_insights", ""))
     use_cases_string = _format_list_content(data.get("use_cases", ""))
+    
+    title_text = data.get("title", "Untitled")
+    tags_list = metadata.get("tags", [])
+    
+    # --- 核心修改 1：檢查是否為原創想法 ---
+    is_original_thought = any(tag.get("name") == "Original Thought" for tag in tags_list)
+    if is_original_thought:
+        title_text = f"💡 {title_text}" # 在標題前加上燈泡 emoji
+    # ------------------------------------
 
     properties = {
-        "Title": {"title": [{"text": {"content": data.get("title", "Untitled")}}]},
+        "Title": {"title": [{"text": {"content": title_text}}]},
         "Core Idea": {"rich_text": [{"text": {"content": data.get("core_idea", "")}}]},
         "Notes": {"rich_text": [{"text": {"content": notes_string[:2000]}}]},
         "Key Insights": {"rich_text": [{"text": {"content": insights_string[:2000]}}]},
@@ -80,25 +105,15 @@ def format_knowledge_properties(data: dict, metadata: dict) -> dict:
         "Status": {"select": {"name": "Active"}}
     }
     
-    # 添加 URL
     if metadata.get("url"):
         properties["URL"] = {"url": metadata["url"]}
     
-    # --- 核心修改：只傳遞 Category 和 Tags 的名稱 ---
-    
-    # 處理 Category
     category_obj = metadata.get("category")
     if category_obj and "name" in category_obj:
-        # 只提取 'name' 來創建新的 select 物件
         properties["Category"] = {"select": {"name": category_obj["name"]}}
         
-    # 處理 Tags
-    tags_list = metadata.get("tags", [])
     if tags_list:
-        # 遍歷列表，只提取每個 tag 的 'name'
         properties["Tags"] = {"multi_select": [{"name": tag["name"]} for tag in tags_list]}
-        
-    # ----------------------------------------------------
         
     return properties
 

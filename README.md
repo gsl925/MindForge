@@ -112,7 +112,7 @@ python main.py add "This is a new idea about system architecture."
 python main.py add-url "https://some-article-url.com"
 
 # Run the knowledge forging process
-python main.py synthesize
+python main.py synthesis
 
 # Generate a weekly trend synthesis
 python main.py review --period weekly

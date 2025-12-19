@@ -120,6 +120,7 @@ def format_knowledge_properties(data: dict, metadata: dict) -> dict:
 def query_notion_database(token: str, database_id: str, filter_payload: dict, debug_mode: bool = False) -> list:
     """
     查詢 Notion 資料庫，並根據 debug_mode 決定是否打印詳細日誌。
+    如果 filter_payload 為空，則獲取所有頁面。
     """
     url = f"https://api.notion.com/v1/databases/{database_id}/query"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "Notion-Version": "2022-06-28"}
@@ -128,40 +129,55 @@ def query_notion_database(token: str, database_id: str, filter_payload: dict, de
     if debug_mode:
         print(f"🐞 [偵錯模式] 準備查詢 Notion 資料庫...")
         print(f"   - Database ID: {database_id}")
-        print(f"   - Filter Payload: {json.dumps(filter_payload, indent=2)}")
+        if filter_payload:
+            print(f"   - Filter Payload: {json.dumps(filter_payload, indent=2)}")
+        else:
+            print("   - Filter Payload: (無，將獲取所有頁面)")
 
     while has_more:
-        payload = {"filter": filter_payload}
-        if start_cursor: payload["start_cursor"] = start_cursor
+        # 建立一個空的 payload 字典
+        payload = {}
+        
+        # 只有在 filter_payload 非空時，才將 "filter" 鍵加入 payload
+        if filter_payload:
+            payload["filter"] = filter_payload
+        
+        # 如果有分頁游標，也加入 payload
+        if start_cursor:
+            payload["start_cursor"] = start_cursor
         
         try:
+            # 將 payload 字典轉換為 JSON 字串並發送
             response = requests.post(url, headers=headers, data=json.dumps(payload))
-            response.raise_for_status() # 如果狀態碼不是 2xx，會在這裡拋出異常
+            response.raise_for_status()  # 如果狀態碼不是 2xx，則拋出異常
+            
             data = response.json()
             results.extend(data.get("results", []))
             has_more = data.get("has_more", False)
             start_cursor = data.get("next_cursor")
+
         except requests.exceptions.RequestException as e:
-            # 這個 except 塊現在會捕獲 400 Bad Request 等錯誤
             print(f"❌ 查詢 Notion 資料庫時發生嚴重錯誤: {e}")
             try:
-                # 嘗試解析錯誤詳情並打印
+                # 嘗試解析並打印 Notion 返回的詳細錯誤 JSON
                 error_details = response.json()
                 print(f"   - Notion API 返回的錯誤詳情: {json.dumps(error_details, indent=2, ensure_ascii=False)}")
-            except json.JSONDecodeError:
-                # 如果連錯誤詳情都無法解析，就打印原始文本
+            except (json.JSONDecodeError, AttributeError):
+                # 如果解析失敗，就打印原始文本
                 print(f"   - Notion API 返回的原始錯誤文本: {response.text}")
             
-            # 在偵錯模式下，提供更詳細的上下文
             if debug_mode:
                 print("🐞 [偵錯模式] 檢查點:")
                 print("   1. 請確認您的 `config.json` 中的 `NOTION_TOKEN` 和資料庫 ID 是否正確。")
-                print("   2. 請確認您的 Integration (整合) 是否已分享給目標資料庫。")
+                print("   2. 請確認您的 Integration 是否已分享給目標資料庫。")
                 print("   3. 請仔細閱讀上面的『錯誤詳情』，它通常會明確指出哪個屬性名稱或類型有問題。")
 
-            return [] # 返回空列表，表示查詢失敗
+            return [] # 發生錯誤時返回空列表
 
-    print(f"✅ 成功從 Notion 查詢到 {len(results)} 筆資料。")
+    # 只有在有過濾條件時才打印成功訊息，避免在儀表板每次刷新時都打印
+    if filter_payload:
+        print(f"✅ 成功從 Notion 查詢到 {len(results)} 筆資料。")
+        
     return results
 
 def update_notion_page_status(token: str, page_id: str, status: str):

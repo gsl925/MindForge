@@ -17,7 +17,7 @@ from scripts.notion_handler import (
     query_notion_database, update_notion_page_status, get_page_content_as_text,
     build_date_filter, format_review_properties
 )
-
+from scripts.email_handler import send_email, format_knowledge_node_as_html, format_review_as_html
 # --- UI 後端邏輯封裝 ---
 
 def ui_process_and_save_content(raw_content: str, config: dict, url: str = None, source_type: str = None):
@@ -65,6 +65,12 @@ def ui_run_knowledge_synthesis(config: dict):
                 if result:
                     st.success(f"✅ 項目 '{knowledge_data.get('title', 'Untitled')}' 已成功合成！")
                     update_notion_page_status(config['NOTION_TOKEN'], page_id, "Processed")
+                    # --- 新增：發送 Email ---
+                    with st.spinner("📧 正在準備並發送 Email..."):
+                        email_subject, email_body = format_knowledge_node_as_html(knowledge_data, metadata)
+                        # 注意：Streamlit 無法處理 getpass，所以這裡會直接在終端機提示
+                        send_email(f"New Knowledge Node: {email_subject}", email_body, config)
+                    # ------------------------                    
                 else:
                     st.error("❌ 寫入 Notion 失敗！請檢查終端機。")
             except requests.exceptions.RequestException as e:
@@ -116,6 +122,12 @@ def ui_run_review(period: str, config: dict):
         result = create_notion_page(config['NOTION_TOKEN'], config['REVIEW_DB_ID'], review_properties)
     if result:
         st.success(f"✅ {period.capitalize()} 趨勢分析報告已成功生成！")
+        # --- 新增：發送 Email ---
+        with st.spinner("📧 正在準備並發送 Email..."):
+            email_subject, email_body = format_review_as_html(review_data, period)
+            # 注意：Streamlit 無法處理 getpass，所以這裡會直接在終端機提示
+            send_email(email_subject, email_body, config)
+        # ------------------------        
     else:
         st.error(f"❌ 趨勢分析報告儲存失敗。請檢查終端機的詳細錯誤訊息。")
 

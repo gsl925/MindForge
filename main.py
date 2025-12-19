@@ -13,7 +13,7 @@ from scripts.notion_handler import (
 )
 from datetime import date
 from scripts.review_agent import generate_periodic_review
-
+from scripts.email_handler import send_email, format_knowledge_node_as_html, format_review_as_html
 
 CONFIG_FILE = 'config.json'
 app = typer.Typer(help="JimLocalBrain - 本地 AI 外腦 + 知識庫系統")
@@ -119,6 +119,11 @@ def run_knowledge_synthesis():
         
         if create_notion_page(CONFIG['NOTION_TOKEN'], CONFIG['KNOWLEDGE_DB_ID'], properties):
             update_notion_page_status(CONFIG['NOTION_TOKEN'], page_id, "Processed")
+            
+            # --- 新增：發送 Email ---
+            email_subject, email_body = format_knowledge_node_as_html(knowledge_data, metadata)
+            send_email(f"New Knowledge Node: {email_subject}", email_body, CONFIG)
+            # ------------------------     
         
     print("\n--- ✅ 知識合成完成 ---\n")
  
@@ -176,6 +181,10 @@ def run_periodic_review(
 
     if result:
         print(f"\n--- ✅ {period.capitalize()} 趨勢分析報告已成功生成並儲存至 Notion！ ---\n")
+        # --- 新增：發送 Email ---
+        email_subject, email_body = format_review_as_html(review_data, period)
+        send_email(email_subject, email_body, CONFIG)
+        # ------------------------        
     else:
         print(f"\n--- ❌ {period.capitalize()} 趨勢分析報告儲存失敗。請檢查上面的錯誤訊息。 ---\n")
     # ------------------------------------------------- 

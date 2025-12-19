@@ -56,6 +56,16 @@ def load_knowledge_data(config):
 st.set_page_config(page_title="MindForge Dashboard", layout="wide")
 st.title("📊 Knowledge Base Dashboard")
 
+# --- 核心修改：檢查 session_state 並在需要時清除快取 ---
+if 'data_updated' not in st.session_state:
+    st.session_state.data_updated = False
+
+if st.session_state.data_updated:
+    st.toast("🔄 數據已更新，正在重新加載儀表板...")
+    st.cache_data.clear()  # 清除所有 @st.cache_data 的快取
+    st.session_state.data_updated = False # 重置標記，避免不必要的重複刷新
+# ----------------------------------------------------
+
 # 加載設定檔
 try:
     with open('config.json', 'r', encoding='utf-8') as f:

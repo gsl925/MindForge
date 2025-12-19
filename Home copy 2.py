@@ -134,9 +134,6 @@ def background_knowledge_synthesis(config: dict, status_dict: dict):
 def background_run_review(config: dict, status_dict: dict, period: str):
     """趨勢分析的背景任務。"""
     try:
-        # --- 核心修改 1: 初始化成功標記 ---
-        status_dict["review_happened"] = False
-                
         status_dict["running"] = True
         status_dict["message"] = f"🔍 正在從 Notion 抓取 {period} 筆記..."
         date_filter = build_date_filter(period)
@@ -164,9 +161,6 @@ def background_run_review(config: dict, status_dict: dict, period: str):
         
         if result:
             status_dict["success"] = f"✅ {period.capitalize()} 趨勢分析報告已成功生成！"
-            
-            # --- 核心修改 2: 更新 status_dict 中的標記 ---
-            status_dict["review_happened"] = True            
         else:
             status_dict["error"] = f"❌ 趨勢分析報告儲存失敗。"
             
@@ -309,23 +303,12 @@ st.header("📊 Trend Analysis & Review")
 review_status = st.session_state.tasks_status["review"]
 if review_status["running"]:
     st.info(f"⏳ {review_status['message']}")
-    # --- 核心修改 3: 為趨勢分析也加入自動刷新循環 ---
-    time.sleep(2)
-    st.rerun()
-elif review_status.get("success") or review_status.get("error"):
-    # --- 核心修改 4: 在任務結束後，檢查成功標記並更新 session_state ---
-    if review_status.get("review_happened", False):
-        # 雖然目前儀表板不看 Review DB，但為了未來擴展，我們仍然設置這個標記
-        st.session_state.data_updated = True 
-        st.toast("✅ 趨勢報告完成！若儀表板有相關數據，將在下次訪問時更新。")
-        review_status["review_happened"] = False # 重置標記
-
-    if review_status["success"]:
-        st.success(review_status["success"])
-        review_status["success"] = ""
-    if review_status["error"]:
-        st.error(review_status["error"])
-        review_status["error"] = ""
+elif review_status["success"]:
+    st.success(review_status["success"])
+    review_status["success"] = ""
+elif review_status["error"]:
+    st.error(review_status["error"])
+    review_status["error"] = ""
 
 period_option = st.selectbox("Select the period you want to review:", ("weekly", "monthly", "quarterly"), format_func=lambda x: x.capitalize())
 if st.button(f"Generate {period_option.capitalize()} Trend Report", disabled=is_task_running):

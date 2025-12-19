@@ -35,10 +35,33 @@ def _format_list_content(content) -> str:
 # --- create_notion_page, format_inbox_properties, query_notion_database, update_notion_page_status, get_page_content_as_text 保持不變 ---
 # ... (這裡省略了未修改的函式，您無需改動它們) ...
 
-def create_notion_page(token: str, database_id: str, properties: dict):
+def create_notion_page(token: str, database_id: str, properties: dict, page_content: str = None) -> dict:
     url = "https://api.notion.com/v1/pages"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "Notion-Version": "2022-06-28"}
     payload = {"parent": {"database_id": database_id}, "properties": properties}
+    # --- 核心修改：如果提供了頁面內容，就將其加入 payload ---
+    if page_content:
+        # Notion 的 rich_text 陣列中，每個 text 物件有 2000 字的限制。
+        # 我們將長文本切分成多個 2000 字的塊。
+        content_chunks = [page_content[i:i + 2000] for i in range(0, len(page_content), 2000)]
+        
+        rich_text_objects = [{"type": "text", "text": {"content": chunk}} for chunk in content_chunks]
+        
+        # 將切分好的文本塊放入一個程式碼區塊中
+        payload["children"] = [
+            {
+                "object": "block",
+                "type": "code",
+                "code": {
+                    "rich_text": rich_text_objects,
+                    # --- 核心修改：將 "text" 改為 "plain text" ---
+                    "language": "plain text"
+                    # -------------------------------------------
+                }
+            }
+        ]
+
+    # ----------------------------------------------------    
     try:
         response = requests.post(url, headers=headers, data=json.dumps(payload))
         response.raise_for_status()
@@ -53,7 +76,9 @@ def format_inbox_properties(processed_data: dict, raw_content: str, url: str = N
     properties = {
         "Title": {"title": [{"text": {"content": processed_data.get("title", "Untitled Note")}}]},
         "Short Summary": {"rich_text": [{"text": {"content": processed_data.get("short_summary", "")}}]},
-        "Extended Summary": {"rich_text": [{"text": {"content": raw_content}}]},
+        # --- 核心修改：不再將長文本放入屬性中 ---
+        # "Extended Summary": {"rich_text": [{"text": {"content": raw_content}}]},
+        # -----------------------------------------
         "Status": {"select": {"name": "New"}}
     }
 
@@ -193,27 +218,38 @@ def update_notion_page_status(token: str, page_id: str, status: str):
         print(f"❌ 更新 Notion 頁面狀態時發生錯誤: {e}\n   錯誤詳情: {response.text}")
 
 # --- 核心修改 1：讓 get_page_content_as_text 返回一個包含元數據的字典 ---
-def get_page_content_as_text(page: dict) -> tuple[str, dict]:
+def get_page_content_as_text(token: str, page: dict) -> tuple[str, dict]:
     """
-    從 Notion 頁面物件中提取關鍵文本內容和所有重要的元數據。
-    返回: (文本內容, 元數據字典)
+    從一個 Notion 頁面物件中提取用於處理的內容和元數據。
+    
+    主要邏輯:
+    1. 內容 (Content): 唯一地從頁面正文 (blocks) 中獲取。
+    2. 元數據 (Metadata): 從頁面的屬性 (properties) 中獲取。
+    
+    防呆設計:
+    - 如果頁面正文為空，將返回空的內容字串，並由上層呼叫者決定如何處理（例如，跳過該項目）。
     """
+    page_id = page['id']
     props = page.get("properties", {})
+
+    # --- 1. 獲取內容 (唯一來源：頁面正文) ---
+    content_to_process = get_page_blocks_as_text(token, page_id)
     
-    # 提取文本內容
-    title = props.get("Title", {}).get("title", [{}])[0].get("text", {}).get("content", "")
-    short_summary = props.get("Short Summary", {}).get("rich_text", [{}])[0].get("text", {}).get("content", "")
-    extended_summary = props.get("Extended Summary", {}).get("rich_text", [{}])[0].get("text", {}).get("content", "")
-    content_string = f"Title: {title}\nShort Summary: {short_summary}\n\n{extended_summary}"
-    
-    # 提取元數據
+    if not content_to_process or not content_to_process.strip():
+        # 防呆：明確告知此頁面因無內容而被跳過
+        print(f"   - ⚠️ 警告: 頁面 {page_id} 的正文為空，無法進行知識合成。已跳過。")
+        print(f"     (這可能是一個舊的、沒有頁面正文的筆記)")
+        
+    # --- 2. 提取元數據 (從屬性中獲取) ---
     metadata = {
         "url": props.get("URL", {}).get("url"),
-        "category": props.get("Category", {}).get("select"), # 獲取完整的 select 物件
-        "tags": props.get("Tags", {}).get("multi_select", []) # 獲取完整的 multi_select 列表
+        "category": props.get("Category", {}).get("select"),
+        "tags": props.get("Tags", {}).get("multi_select", [])
     }
     
-    return content_string, metadata
+    # 我們仍然返回 content_to_process (可能是空字串)，讓上層函式做最終判斷
+    return content_to_process.strip(), metadata
+
 # --- 確保您有 _format_list_content 函式 ---
 def _format_list_content(content) -> str:
     if isinstance(content, list):
@@ -289,3 +325,27 @@ def format_review_properties(review_data: dict, period: str, start_date: date, e
         "Unanswered Questions": {"rich_text": [{"text": {"content": questions_str}}]}
     }
     return properties
+
+# scripts/notion_handler.py
+
+def get_page_blocks_as_text(token: str, page_id: str) -> str:
+    """獲取指定頁面 ID 下所有區塊的文字內容。"""
+    url = f"https://api.notion.com/v1/blocks/{page_id}/children"
+    headers = {"Authorization": f"Bearer {token}", "Notion-Version": "2022-06-28"}
+    
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        blocks = response.json().get("results", [])
+        
+        full_text = []
+        for block in blocks:
+            block_type = block.get("type")
+            if block_type in block and "rich_text" in block[block_type]:
+                for text_obj in block[block_type]["rich_text"]:
+                    full_text.append(text_obj.get("plain_text", ""))
+        
+        return "\n".join(full_text)
+    except requests.exceptions.RequestException as e:
+        print(f"❌ 獲取頁面區塊時發生錯誤: {e}")
+        return ""

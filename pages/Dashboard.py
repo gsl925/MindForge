@@ -7,6 +7,7 @@ from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import json
 from datetime import datetime
+import tzlocal  # <--- 導入新的套件
 
 # 導入我們自己的函式
 # Streamlit 的多頁面應用會自動處理路徑問題
@@ -187,4 +188,26 @@ st.markdown("---")
 
 # --- 原始數據表格 ---
 st.subheader("Filtered Data")
-st.dataframe(filtered_df)
+
+# 複製一份 DataFrame 以免影響原始數據
+display_df = filtered_df.copy()
+
+# --- 核心修改：動態獲取本地時區並進行轉換 ---
+try:
+    # 1. 自動偵測本地時區名稱 (例如 'Asia/Taipei')
+    local_tz_name = tzlocal.get_localzone_name()
+    st.info(f"偵測到本地時區: {local_tz_name}，正在進行時間轉換...")
+
+    # 2. 將 'created_time' 欄位從 UTC 轉換到偵測到的本地時區
+    display_df['created_time'] = display_df['created_time'].dt.tz_convert(local_tz_name)
+
+except Exception as e:
+    st.warning(f"自動時區轉換失敗: {e}")
+    st.info("將繼續顯示 UTC 時間。您可以嘗試手動在程式碼中指定時區，例如 'Asia/Taipei'。")
+
+# 為了更好的可讀性，格式化時間字串 (並移除時區資訊)
+# 我們可以在格式化之前，先用 tz_localize(None) 移除時區資訊，讓 strftime 更乾淨
+display_df['created_time'] = display_df['created_time'].dt.tz_localize(None).dt.strftime('%Y-%m-%d %H:%M:%S')
+
+# 顯示處理過的 DataFrame
+st.dataframe(display_df)

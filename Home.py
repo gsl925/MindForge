@@ -31,7 +31,8 @@ def ui_process_and_save_content(raw_content: str, config: dict, url: str = None,
         st.warning("⚠️ AI 智能處理失敗。不過別擔心，您的原始筆記仍會被保存。")
         processed_data = {}
     properties = format_inbox_properties(processed_data, raw_content, url, source_type=source_type)
-    result = create_notion_page(config['NOTION_TOKEN'], config['INBOX_DB_ID'], properties)
+    # 將 raw_content 作為 page_content 傳遞
+    result = create_notion_page(config['NOTION_TOKEN'], config['INBOX_DB_ID'], properties, page_content=raw_content)
     return result is not None
 
 def ui_run_knowledge_synthesis(config: dict):
@@ -47,7 +48,9 @@ def ui_run_knowledge_synthesis(config: dict):
     st.info(f"找到 {total_items} 個新項目需要處理。")
     for i, item in enumerate(new_items):
         page_id = item['id']
-        content_to_process, metadata = get_page_content_as_text(item)
+        # --- 核心修改：傳入 config['NOTION_TOKEN'] ---
+        content_to_process, metadata = get_page_content_as_text(config['NOTION_TOKEN'], item)
+        # -----------------------------------------------
         with st.expander(f"處理項目 {i+1}/{total_items}: {content_to_process[:80]}...", expanded=True):
             try:
                 with st.spinner("🧠 正在呼叫 AI 生成知識節點..."):

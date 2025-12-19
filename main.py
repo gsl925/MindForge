@@ -52,7 +52,8 @@ def process_and_save_content(raw_content: str, url: str = None, source_type: str
     # 將 source_type 傳遞下去
     properties = format_inbox_properties(processed_data, raw_content, url, source_type=source_type)
     
-    if create_notion_page(CONFIG['NOTION_TOKEN'], CONFIG['INBOX_DB_ID'], properties):
+    # 將 raw_content 作為 page_content 傳遞
+    if create_notion_page(CONFIG['NOTION_TOKEN'], CONFIG['INBOX_DB_ID'], properties, page_content=raw_content):
         print("✅ 成功新增至 Notion Inbox！")
     else:
         print("❌ 新增至 Notion Inbox 失敗。")
@@ -102,8 +103,9 @@ def run_knowledge_synthesis():
         page_id = item['id']
         print(f"   - 正在處理項目: {page_id}")
         
-        # get_page_content_as_text 現在返回 (內容, 元數據字典)
-        content_to_process, metadata = get_page_content_as_text(item)
+        # --- 核心修改：傳入 CONFIG['NOTION_TOKEN'] ---
+        content_to_process, metadata = get_page_content_as_text(CONFIG['NOTION_TOKEN'], item)
+        # -----------------------------------------------
         
         if not content_to_process.strip():
             print(f"   - 項目 {page_id} 內容為空，跳過。")

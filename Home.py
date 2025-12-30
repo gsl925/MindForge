@@ -226,6 +226,9 @@ st.header("📥 Quick Add to Inbox")
 inbox_status = st.session_state.tasks_status["inbox"]
 if inbox_status["running"]:
     st.info(f"⏳ {inbox_status['message']}")
+    # 加入輪詢機制，每秒刷新一次來檢查背景任務狀態
+    time.sleep(1)
+    st.rerun()    
 elif inbox_status["success"]:
     st.success(inbox_status["success"])
     inbox_status["success"] = ""
@@ -296,7 +299,7 @@ elif synthesis_status["logs"]:
         st.toast("✅ 合成完成！儀表板數據將在下次訪問時更新。")
         # 重置標記，避免不必要的重複觸發
         synthesis_status["synthesis_happened"] = False
-        
+            
     st.info("上次合成任務已結束。")
     with st.expander("顯示上次運行的詳細日誌"):
         log_container = st.container(height=300)

@@ -16,7 +16,7 @@
 - **🔗 Knowledge Forging**: Transforms processed inbox items into structured knowledge nodes, extracting the core idea, key insights, and potential use cases.
 - **📊 Trend Synthesis**: Acts as your personal AI strategist, reviewing your knowledge base weekly, monthly, or quarterly to identify emerging trends, new ideas, and actionable insights.
 - **💻 Local-First & Privacy-Focused**: Powered by Ollama, all AI processing runs on your local machine. Your thoughts and data remain yours, always.
-- **🚀 Multi-Interface Access**:
+- **🚀 Multi-Interface Access**:c
     - **Web UI**: An intuitive Streamlit-based interface for a comprehensive visual experience.
     - **CLI**: A powerful command-line interface for power users and automation.
     - **Flow Launcher Integration**: Capture ideas instantly from anywhere on your desktop, without breaking your flow.

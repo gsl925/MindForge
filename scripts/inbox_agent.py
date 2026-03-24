@@ -3,7 +3,10 @@ from newspaper import Article, Config
 from PIL import Image
 import pytesseract
 from .llm_handler import query_llm # 導入新的 query_llm
-
+from playwright.sync_api import sync_playwright
+from bs4 import BeautifulSoup
+import cloudscraper
+from bs4 import BeautifulSoup
 # 修改函式簽名
 def process_inbox_item(raw_content: str, config: dict) -> dict:
     """
@@ -34,22 +37,88 @@ def process_inbox_item(raw_content: str, config: dict) -> dict:
             return None
     return None
 
+# def get_content_from_url(url: str) -> str:
+#     """
+#     從 URL 抓取主要文章內容，並偽裝成瀏覽器以避免 403 錯誤。
+#     """
+#     try:
+#         print(f"🕸️ 正在從 URL 抓取內容: {url}")
+#         config = Config()
+#         config.browser_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+#         config.request_timeout = 15
+#         article = Article(url, config=config)
+#         article.download()
+#         article.parse()
+#         return f"Title: {article.title}\n\n{article.text}"
+#     except Exception as e:
+#         print(f"❌ 從 URL 抓取內容失敗: {e}")
+#         return None
+
 def get_content_from_url(url: str) -> str:
     """
-    從 URL 抓取主要文章內容，並偽裝成瀏覽器以避免 403 錯誤。
+    抓取文章內容，並顯示是用哪一種方法成功
     """
+    print(f"🕸️ 正在從 URL 抓取內容: {url}")
+
+    # --- Tier 1: newspaper ---
     try:
-        print(f"🕸️ 正在從 URL 抓取內容: {url}")
         config = Config()
-        config.browser_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        config.request_timeout = 15
+        config.browser_user_agent = "Mozilla/5.0"
+        config.request_timeout = 10
+
         article = Article(url, config=config)
         article.download()
         article.parse()
-        return f"Title: {article.title}\n\n{article.text}"
+
+        if article.text.strip():
+            print("✅ 成功 (newspaper)")
+            return f"Title: {article.title}\n\n{article.text}"
+
     except Exception as e:
-        print(f"❌ 從 URL 抓取內容失敗: {e}")
-        return None
+        print(f"⚠️ newspaper 失敗: {e}")
+
+    # --- Tier 2: cloudscraper ---
+    try:
+        scraper = cloudscraper.create_scraper()
+        res = scraper.get(url, timeout=15)
+
+        if res.status_code == 200:
+            soup = BeautifulSoup(res.text, "html.parser")
+
+            article_tag = soup.find("article") or soup.find("main")
+            text = article_tag.get_text(separator="\n") if article_tag else soup.get_text()
+
+            if text.strip():
+                print("✅ 成功 (cloudscraper)")
+                return f"(cloudscraper)\n\n{text.strip()}"
+
+    except Exception as e:
+        print(f"⚠️ cloudscraper 失敗: {e}")
+
+    # --- Tier 3: playwright ---
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+
+            page.goto(url, timeout=20000)
+            content = page.content()
+
+            soup = BeautifulSoup(content, "html.parser")
+            article_tag = soup.find("article") or soup.find("main")
+            text = article_tag.get_text(separator="\n") if article_tag else soup.get_text()
+
+            browser.close()
+
+            if text.strip():
+                print("✅ 成功 (playwright)")
+                return f"(playwright)\n\n{text.strip()}"
+
+    except Exception as e:
+        print(f"❌ playwright 失敗: {e}")
+
+    print("❌ 全部方法失敗")
+    return None
 
 def get_text_from_image(image_path: str) -> str:
     """從圖片路徑使用 OCR 提取文字。"""
